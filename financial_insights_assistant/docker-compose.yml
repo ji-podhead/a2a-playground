@@ -1,0 +1,151 @@
+version: '3.8'
+
+networks:
+  financial_assistant_network:
+    driver: bridge
+
+volumes:
+  postgres_data: # Volume for PostgreSQL data persistence
+  # mcp_trader_source_vol: # If mcp-trader source is managed outside image
+
+services:
+  postgres_db:
+    image: postgres:15
+    container_name: postgres_db_container
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./common/db_schema.sql:/docker-entrypoint-initdb.d/init.sql # Initialize schema on first run
+    networks:
+      - financial_assistant_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres_mcp_server:
+    image: crystaldba/postgres-mcp:latest
+    container_name: postgres_mcp_server_container
+    depends_on:
+      postgres_db:
+        condition: service_healthy # Wait for postgres_db to be healthy
+    environment:
+      DB_HOST: postgres_db_container
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB}
+      MCP_SERVER_PORT: 8000 # Port inside the container postgres-mcp listens on
+    ports:
+      - "8003:8000" # Host port : Container port
+    networks:
+      - financial_assistant_network
+    restart: unless-stopped
+    # Add healthcheck if postgres-mcp image supports it or has a simple check command
+
+  mcp_trader_server:
+    build:
+      context: ./config_mcp/mcp-trader-src # Assumes mcp-trader source and Dockerfile are here
+      dockerfile: Dockerfile
+    container_name: mcp_trader_server_container
+    environment:
+      TIINGO_API_KEY: ${TIINGO_API_KEY}
+      MCP_SERVER_PORT: 8000 # Port mcp-trader's HTTP server will listen on inside container
+      # Ensure mcp-trader's CMD uses this port, e.g., "uv run mcp-trader --http --port ${MCP_SERVER_PORT}"
+    ports:
+      - "8004:8000" # Host port : Container port
+    networks:
+      - financial_assistant_network
+    restart: unless-stopped
+    # Add healthcheck if mcp-trader image supports it or has a simple check command
+
+  pg_interface_agent_service:
+    build:
+      context: .
+      dockerfile: ./pg_interface_agent/Dockerfile
+    container_name: pg_interface_agent_container
+    depends_on:
+      postgres_mcp_server: # Depends on the MCP server it calls
+        condition: service_started # Basic check, a healthcheck would be better
+    environment:
+      PG_INTERFACE_AGENT_PORT: 8001 # Port inside this container
+      POSTGRES_MCP_URL: http://postgres_mcp_server_container:8000 # URL to reach postgres-mcp
+    ports:
+      - "8001:8001"
+    networks:
+      - financial_assistant_network
+    restart: unless-stopped
+
+  fin_interface_agent_service:
+    build:
+      context: .
+      dockerfile: ./fin_interface_agent/Dockerfile
+    container_name: fin_interface_agent_container
+    depends_on:
+      mcp_trader_server:
+        condition: service_started # Basic check
+    environment:
+      FIN_INTERFACE_AGENT_PORT: 8002 # Port inside this container
+      MCP_TRADER_URL: http://mcp_trader_server_container:8000 # URL to reach mcp-trader
+    ports:
+      - "8002:8002"
+    networks:
+      - financial_assistant_network
+    restart: unless-stopped
+
+  analysis_loop_agent_service:
+    build:
+      context: .
+      dockerfile: ./analysis_loop_agent/Dockerfile
+    container_name: analysis_loop_agent_container
+    depends_on:
+      pg_interface_agent_service:
+        condition: service_started
+      fin_interface_agent_service:
+        condition: service_started
+    environment:
+      ANALYSIS_LOOP_AGENT_PORT: 8005 # Port inside this container
+      PG_INTERFACE_AGENT_URL: http://pg_interface_agent_container:8001 # Corrected service name
+      FIN_INTERFACE_AGENT_URL: http://fin_interface_agent_container:8002 # Corrected service name
+      ANALYSIS_LOOP_SLEEP_INTERVAL_SECONDS: ${ANALYSIS_LOOP_SLEEP_INTERVAL_SECONDS:-60} # Default if not in .env
+    ports:
+      - "8005:8005"
+    networks:
+      - financial_assistant_network
+    restart: unless-stopped
+
+  host_agent_ui_service:
+    build:
+      context: .
+      dockerfile: ./host_agent/Dockerfile
+    container_name: host_agent_ui_container
+    depends_on: # Depends on all agents it might call
+      analysis_loop_agent_service:
+        condition: service_started
+      pg_interface_agent_service:
+        condition: service_started
+      fin_interface_agent_service:
+        condition: service_started
+    environment:
+      HOST_AGENT_SERVER_PORT: 8080 # Port Gradio UI runs on inside container
+      ANALYSIS_LOOP_AGENT_URL: http://analysis_loop_agent_container:8005 # Corrected service name
+      PG_INTERFACE_AGENT_URL: http://pg_interface_agent_container:8001   # Corrected service name
+      FIN_INTERFACE_AGENT_URL: http://fin_interface_agent_container:8002  # Corrected service name
+      # Pass other necessary env vars like HOST_AGENT_MODEL, GOOGLE_API_KEY, ADK_PROJECT_ID etc.
+      # These should be present in the .env file if needed by host_agent_logic.py
+      HOST_AGENT_MODEL: ${HOST_AGENT_MODEL:-gemini-1.5-flash-latest}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      ADK_PROJECT_ID: ${ADK_PROJECT_ID}
+      ADK_LOCATION: ${ADK_LOCATION}
+    ports:
+      - "8080:8080"
+    networks:
+      - financial_assistant_network
+    restart: unless-stopped

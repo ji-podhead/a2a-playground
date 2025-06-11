@@ -1,0 +1,24 @@
+# Core A2A, ADK, Web Frameworks
+a2a-python-client
+google-adk
+google-generativeai
+fastapi
+uvicorn[standard]
+gradio
+httpx
+python-dotenv
+uuid
+
+# Database connector for PostgreSQL (might be used by pg_interface_agent or for schema setup scripts)
+psycopg2-binary
+
+# Data manipulation (useful for agents dealing with financial data)
+pandas
+numpy
+
+# Technical Analysis library (might be needed by fin_interface_agent if it does any pre/post processing for mcp-trader,
+# or if mcp-trader itself doesn't fully encapsulate it when run as a service)
+# TA-Lib can be tricky, ensure its system dependencies (like ta-lib C library) are handled by the base Docker image
+# or in specific Dockerfiles where needed. For now, just listing it as a potential need.
+# pandas-ta
+# ta-lib # This is the Python wrapper for the C library
