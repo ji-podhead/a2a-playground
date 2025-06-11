@@ -121,6 +121,23 @@ services:
       - financial_assistant_network
     restart: unless-stopped
 
+  shopping_agent_service_container:
+    build:
+      context: . # Build from the project root
+      dockerfile: ./financial_insights_assistant/shopping_agent/Dockerfile
+    container_name: shopping_agent_service_container
+    ports:
+      - "8007:8007" # Expose port 8007 on the host
+    environment:
+      - PG_INTERFACE_AGENT_URL=http://pg_interface_agent_container:8001 # URL for PG Interface
+      - PYTHONPATH=/app
+      # Add any other necessary environment variables for the shopping agent
+    networks:
+      - financial_assistant_network # Ensure it's on the same network as other services
+    restart: unless-stopped
+    # depends_on: # Optional: specify dependencies if strict startup order is critical
+    #   - pg_interface_agent_container
+
   host_agent_ui_service:
     build:
       context: .
@@ -133,11 +150,14 @@ services:
         condition: service_started
       fin_interface_agent_service:
         condition: service_started
+      shopping_agent_service_container: # Added dependency for shopping agent
+        condition: service_started
     environment:
       HOST_AGENT_SERVER_PORT: 8080 # Port Gradio UI runs on inside container
       ANALYSIS_LOOP_AGENT_URL: http://analysis_loop_agent_container:8005 # Corrected service name
       PG_INTERFACE_AGENT_URL: http://pg_interface_agent_container:8001   # Corrected service name
       FIN_INTERFACE_AGENT_URL: http://fin_interface_agent_container:8002  # Corrected service name
+      SHOPPING_AGENT_URL: http://shopping_agent_service_container:8007 # Add this line
       # Pass other necessary env vars like HOST_AGENT_MODEL, GOOGLE_API_KEY, ADK_PROJECT_ID etc.
       # These should be present in the .env file if needed by host_agent_logic.py
       HOST_AGENT_MODEL: ${HOST_AGENT_MODEL:-gemini-1.5-flash-latest}

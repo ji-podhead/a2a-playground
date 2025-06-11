@@ -16,6 +16,7 @@ AGENT_DESCRIPTION = "Orchestrates financial analysis tasks and interacts with th
 ANALYSIS_LOOP_AGENT_URL = os.getenv("ANALYSIS_LOOP_AGENT_URL", "http://analysis_loop_agent_service:8005")
 PG_INTERFACE_AGENT_URL = os.getenv("PG_INTERFACE_AGENT_URL", "http://pg_interface_agent_service:8001")
 FIN_INTERFACE_AGENT_URL = os.getenv("FIN_INTERFACE_AGENT_URL", "http://fin_interface_agent_service:8002")
+SHOPPING_AGENT_URL = os.getenv("SHOPPING_AGENT_URL", "http://shopping_agent_service:8007") # Default port, adjust if needed
 
 # Gemini model for the host agent's intelligence
 HOST_AGENT_MODEL = os.getenv("HOST_AGENT_MODEL", "gemini-1.5-flash-latest")
@@ -36,9 +37,15 @@ class FinancialHostLogicAgent(ADKAgent):
         self.add_tool(self.query_database) # Generic SQL query tool
         self.add_tool(self.fetch_financial_data) # Generic financial data fetch
 
+        self.add_tool(self.view_shop_catalog)
+        self.add_tool(self.add_item_to_cart)
+        self.add_tool(self.view_shopping_cart)
+        self.add_tool(self.checkout_cart)
+        self.add_tool(self.get_shopping_balance)
+
         self._a2a_client = httpx.AsyncClient(timeout=60.0)
         print(f"[{AGENT_NAME}] Initialized. Model: {HOST_AGENT_MODEL}")
-        print(f"[{AGENT_NAME}] Downstream Agents: Analysis->{ANALYSIS_LOOP_AGENT_URL}, PG->{PG_INTERFACE_AGENT_URL}, Fin->{FIN_INTERFACE_AGENT_URL}")
+        print(f"[{AGENT_NAME}] Downstream Agents: Analysis->{ANALYSIS_LOOP_AGENT_URL}, PG->{PG_INTERFACE_AGENT_URL}, Fin->{FIN_INTERFACE_AGENT_URL}, Shop->{SHOPPING_AGENT_URL}")
 
 
     def _get_host_instruction(self) -> str:
@@ -88,6 +95,33 @@ class FinancialHostLogicAgent(ADKAgent):
         *   If a stock symbol is needed and not provided, ALWAYS ask the user for it.
         *   Do not make up information. Rely on the tools.
         *   If a tool call fails, inform the user about the error.
+
+        7.  **View Shopping Catalog**:
+            *   If the user asks to "see items for sale", "show me the catalog", "what can I buy?".
+            *   Call the `view_shop_catalog` tool.
+            *   Present the catalog to the user.
+
+        8.  **Add Item to Cart**:
+            *   If the user asks to "add [ITEM_NAME] to cart", "buy [QUANTITY] of [ITEM_NAME]", or similar.
+            *   You MUST obtain the `item_name` they want to add. This should be one of the items listed in the shop catalog. If unsure, you can ask the user to view the catalog first.
+            *   You MUST obtain the `quantity`. If not specified by the user, assume a quantity of 1.
+            *   Call the `add_item_to_cart` tool with the `item_name` and `quantity` parameters.
+            *   Inform the user about the result (e.g., item added, or error if item not found or invalid quantity).
+
+        9.  **View Shopping Cart**:
+            *   If the user asks "what's in my cart?", "show my shopping cart", "current order".
+            *   Call the `view_shopping_cart` tool.
+            *   Display cart contents and total cost.
+
+        10. **Checkout Cart**:
+            *   If the user asks to "checkout", "buy my items", "complete purchase".
+            *   Call the `checkout_cart` tool.
+            *   Report success (new balance, items bought) or failure (e.g., insufficient funds).
+
+        11. **Get Shopping Balance**:
+            *   If the user asks "what's my shopping balance?", "how much virtual money do I have?".
+            *   Call the `get_shopping_balance` tool.
+            *   Inform the user of their virtual balance.
         """
 
     async def _call_downstream_a2a_tool(self, agent_base_url: str, tool_name: str, tool_args: Dict[str, Any]) -> Dict[str, Any]:
@@ -160,6 +194,35 @@ class FinancialHostLogicAgent(ADKAgent):
         except json.JSONDecodeError:
             return {"status": "error", "error": "Invalid JSON format for tool_arguments."}
         return await self._call_downstream_a2a_tool(FIN_INTERFACE_AGENT_URL, fin_tool_name, args_dict)
+
+    @tool()
+    async def view_shop_catalog(self, tool_context: ToolContext) -> Dict[str, Any]:
+        """Displays the available virtual items from the shopping catalog."""
+        return await self._call_downstream_a2a_tool(SHOPPING_AGENT_URL, "view_catalog", {})
+
+    @tool()
+    async def add_item_to_cart(self, item_name: str, quantity: int, tool_context: ToolContext) -> Dict[str, Any]:
+        """Adds a specified quantity of an item to the virtual shopping cart."""
+        user_id = "default_fin_user"
+        return await self._call_downstream_a2a_tool(SHOPPING_AGENT_URL, "add_to_cart", {"user_id": user_id, "item_name": item_name, "quantity": quantity})
+
+    @tool()
+    async def view_shopping_cart(self, tool_context: ToolContext) -> Dict[str, Any]:
+        """Shows the current items in the shopping cart and the total cost."""
+        user_id = "default_fin_user"
+        return await self._call_downstream_a2a_tool(SHOPPING_AGENT_URL, "view_cart", {"user_id": user_id})
+
+    @tool()
+    async def checkout_cart(self, tool_context: ToolContext) -> Dict[str, Any]:
+        """Simulates purchasing all items currently in the shopping cart."""
+        user_id = "default_fin_user"
+        return await self._call_downstream_a2a_tool(SHOPPING_AGENT_URL, "checkout", {"user_id": user_id})
+
+    @tool()
+    async def get_shopping_balance(self, tool_context: ToolContext) -> Dict[str, Any]:
+        """Fetches the virtual shopping fund balance for the current user."""
+        user_id = "default_fin_user"
+        return await self._call_downstream_a2a_tool(SHOPPING_AGENT_URL, "get_virtual_balance", {"user_id": user_id})
 
     async def close_clients(self):
         if self._a2a_client and not self._a2a_client.is_closed:
