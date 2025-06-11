@@ -1,0 +1,55 @@
+version: '3.8' # Specify docker-compose version
+
+services:
+  flight_agent_service:
+    build:
+      context: . # Docker build context is the project root
+      dockerfile: ./flight_agent/Dockerfile
+    container_name: flight_specialist_agent
+    ports:
+      - "8001:8001" # Expose flight agent's port 8001 to host's port 8001
+    networks:
+      - travel_planner_network
+    # No explicit environment_file needed if Dockerfile's CMD specifies port
+    # and routing agent gets full URL from its own .env passed at its build/run time.
+    # However, for consistency or if agent needs to know its own URL:
+    # environment:
+    #   - FLIGHT_AGENT_PORT=8001
+
+  hotel_agent_service:
+    build:
+      context: .
+      dockerfile: ./hotel_agent/Dockerfile
+    container_name: hotel_specialist_agent
+    ports:
+      - "8002:8002" # Expose hotel agent's port 8002 to host's port 8002
+    networks:
+      - travel_planner_network
+    # environment:
+    #   - HOTEL_AGENT_PORT=8002
+
+  host_agent_ui_service:
+    build:
+      context: .
+      dockerfile: ./host_agent/Dockerfile
+    container_name: host_routing_agent_ui
+    ports:
+      - "8080:8080" # Expose Gradio UI's port 8080 to host's port 8080
+    networks:
+      - travel_planner_network
+    env_file:
+      - .env # Pass environment variables from .env file to the host_agent service
+             # This is crucial for FLIGHT_AGENT_URL and HOTEL_AGENT_URL
+    depends_on: # Optional: wait for worker services to start
+      flight_agent_service:
+        condition: service_started # Basic check, doesn't guarantee service is "ready"
+      hotel_agent_service:
+        condition: service_started # A healthcheck would be more robust.
+    # Ensure the host agent can reach worker agents using their service names
+    # The URLs in the .env file should be e.g.:
+    # FLIGHT_AGENT_URL=http://flight_agent_service:8001
+    # HOTEL_AGENT_URL=http://hotel_agent_service:8002
+
+networks:
+  travel_planner_network:
+    driver: bridge

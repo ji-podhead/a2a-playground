@@ -1,0 +1,2 @@
+This is a placeholder for static assets like images.
+You can add an a2a.png here for the Gradio UI if desired.
