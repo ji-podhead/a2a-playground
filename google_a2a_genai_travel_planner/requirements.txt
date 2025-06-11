@@ -1,0 +1,23 @@
+# Main ADK and GenAI libraries
+google-adk
+google-generativeai
+google-cloud-aiplatform # Often needed for ADK/Gemini integration
+
+# A2A Client
+a2a-python-client
+
+# For creating agent services (FastAPI)
+fastapi
+uvicorn[standard] # ASGI server for FastAPI
+
+# For the UI (Gradio)
+gradio
+
+# For HTTP requests (used by A2A client and potentially ADK)
+httpx
+
+# For environment variable management
+python-dotenv
+
+# For unique IDs
+uuid
