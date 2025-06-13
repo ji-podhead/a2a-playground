@@ -7,6 +7,8 @@ from datetime import datetime
 class AgentType(str, Enum):
     MCP = "mcp"
     A2A = "a2a"
+    ADK = "adk"
+    FINANCIAL_HOST = "financial_host" # Added
     CUSTOM = "custom_agent_type" # Example, can be expanded
 
 class AgentStatus(str, Enum):
