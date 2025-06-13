@@ -1,16 +1,19 @@
 'use client';
 
 import React from 'react';
+import { AgentType } from '@/types/api'; // Import AgentType
 
 interface DraggableNodeProps {
-  nodeType: string;
-  label: string;
+  nodeType: string; // React Flow's node type (e.g., 'default', 'input', 'output')
+  label: string;    // Label displayed on the draggable item and default for new node
+  agentType: AgentType; // Our backend's agent type
 }
 
-const DraggableNode: React.FC<DraggableNodeProps> = ({ nodeType, label }) => {
+const DraggableNode: React.FC<DraggableNodeProps> = ({ nodeType, label, agentType }) => {
   const onDragStart = (event: React.DragEvent<HTMLDivElement>) => {
     event.dataTransfer.setData('application/reactflow-type', nodeType);
     event.dataTransfer.setData('application/reactflow-label', label);
+    event.dataTransfer.setData('application/reactflow-agent-type', agentType); // Pass agentType
     event.dataTransfer.effectAllowed = 'move';
   };
 
@@ -20,8 +23,7 @@ const DraggableNode: React.FC<DraggableNodeProps> = ({ nodeType, label }) => {
       onDragStart={onDragStart}
       draggable
     >
-      {/* Placeholder for an icon - could use an SVG or a character */}
-      <span className="mr-2 text-indigo-600">◈</span>
+      <span className="mr-2 text-indigo-600">◈</span> {/* Consider making icon dynamic based on agentType */}
       <span className="text-sm font-medium text-gray-700">{label}</span>
     </div>
   );
