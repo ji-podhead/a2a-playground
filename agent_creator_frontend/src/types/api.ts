@@ -1,6 +1,8 @@
 export enum AgentType {
   MCP = "mcp",
   A2A = "a2a",
+  ADK = "adk", // Added
+  FINANCIAL_HOST = "financial_host", // Added
   CUSTOM = "custom_agent_type",
 }
 
